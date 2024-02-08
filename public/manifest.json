@@ -1,9 +1,9 @@
 {
-  "author": "Farrel Mahaztra",
-  "name": "Text to Speech",
-  "description": "Adds text to speech to your flashcards",
+  "author": "Mrcoding",
+  "name": "Rem to Speech",
+  "description": "Adds text to speech to your current Rem",
   "enableOnMobile": true,
-  "id": "text_to_speech",
+  "id": "rem_to_speech",
   "manifestVersion": 1,
   "version": {
     "major": 0,
@@ -15,7 +15,7 @@
     "minor": 12,
     "patch": 67
   },
-  "repoUrl": "https://github.com/remnoteio/remnote-official-plugins",
+  "repoUrl": "https://github.com/mrcoding-dev/rem-to-speech",
   "requestNative": true,
   "requiredScopes": [
     {

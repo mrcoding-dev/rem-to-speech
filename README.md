@@ -18,8 +18,7 @@ This RemNote plugin enhances your note-taking experience by providing a text-to-
 
 To use the text-to-speech feature, navigate to the Rem you want to read aloud and execute the `/read Select Text` command. Ensure your desired voice is selected in the plugin settings for the best experience.
 
-![alt text](https://github.com/mrcoding-dev/rem-to-speech/image.png)
-ADD IMAGWE
+![image.png](image.png)
 
 ## Support
 

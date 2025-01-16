@@ -148,7 +148,6 @@ dist
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
-
 # Local History for Visual Studio Code
 .history/
 
@@ -161,3 +160,6 @@ dist
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/node,visualstudiocode
+
+# Custom rules
+.windsurfrules

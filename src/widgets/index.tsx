@@ -1,49 +1,93 @@
-import { declareIndexPlugin, ReactRNPlugin } from "@remnote/plugin-sdk";
+import { declareIndexPlugin, ReactRNPlugin, RichTextInterface, EditorEvents } from "@remnote/plugin-sdk";
 
 async function onActivate(plugin: ReactRNPlugin) {
-  // Registra la configuración para seleccionar la voz
-  function updateVoiceOptions() {
-    plugin.settings.registerDropdownSetting({
-      id: "voice-selection",
-      title: "Voice Selection",
-      description: "Select the voice to use for Text to Speech",
-      options: speechSynthesis.getVoices().map(voice => ({
-        key: voice.name,
-        label: `${voice.name} (${voice.lang})`,
-        value: voice.name,
-      })),
-    });
-  }
+  // Función para leer texto
+  const readText = (text: string) => {
+    if (!text || !text.trim()) {
+      plugin.app.toast("No hay texto para leer!");
+      return;
+    }
 
-  // Llama a updateVoiceOptions inmediatamente y también cuando cambian las voces disponibles
-  updateVoiceOptions();
-  speechSynthesis.onvoiceschanged = updateVoiceOptions;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.volume = 1;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
 
-  // Registra el comando para leer el Rem enfocado
+  // Función para extraer texto plano de RichText
+  const extractText = (richText: RichTextInterface): string => {
+    return richText.map(part => {
+      if (typeof part === 'string') return part;
+      if ('_type' in part && part._type === 'rem') return '';
+      return '';
+    }).join(' ').trim();
+  };
+
+  // Variable para almacenar la última selección
+  let lastSelection = '';
+
+  // Función para extraer texto de TextSelection
+  const extractSelectedText = (selection: any): string => {
+    return selection?.toString() || '';
+  };
+
+  // Escuchar cambios en la selección
+  plugin.event.addListener(EditorEvents.EditorSelectionChanged, undefined, async (data: any) => {
+    try {
+      if (data?.text) {
+        lastSelection = data.text;
+        console.log('Selected text:', lastSelection);
+      }
+    } catch (error) {
+      console.error('Error getting selected text:', error);
+    }
+  });
+
+  // Comando para leer texto seleccionado
+  plugin.app.registerCommand({
+    id: 'read-selected-text',
+    name: 'Leer Texto Seleccionado',
+    description: 'Lee el texto seleccionado usando síntesis de voz',
+    action: async () => {
+      try {
+        const selection = await plugin.editor.getSelection();
+        
+        if (selection && 'type' in selection && selection.type === 'Rem') {
+          // Es una selección de Rem
+          const selectedRem = await plugin.rem.findOne(selection.remIds[0]);
+          if (selectedRem?.text) {
+            readText(extractText(selectedRem.text));
+          }
+        } else if (lastSelection.trim()) {
+          readText(lastSelection);
+        } else {
+          // Si no hay texto seleccionado, intentamos leer el Rem enfocado
+          const focusedRem = await plugin.focus.getFocusedRem();
+          if (focusedRem?.text) {
+            readText(extractText(focusedRem.text));
+          } else {
+            plugin.app.toast("No hay texto seleccionado");
+          }
+        }
+      } catch (error) {
+        plugin.app.toast(`Error: ${error}`);
+      }
+    },
+  });
+
+  // Comando para leer Rem actual
   plugin.app.registerCommand({
     id: 'read-current-rem',
-    name: 'Read Current Rem',
-    description: 'Reads the text of the currently focused Rem using Text to Speech',
+    name: 'Leer Rem Actual',
+    description: 'Lee el texto del Rem actualmente enfocado',
     action: async () => {
       const focusedRem = await plugin.focus.getFocusedRem();
       if (focusedRem && focusedRem.text) {
-        // Obtiene la voz seleccionada de la configuración
-        const selectedVoiceName = await plugin.settings.getSetting("voice-selection");
-        const remContent = focusedRem.text as any[]; // Asumiendo que no tenemos un tipo específico para RichTextElement
-        const textToRead = remContent.map(part =>
-          typeof part === 'string' ? part : part.text || ''
-        ).join(' ');
-
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        // Encuentra y aplica la voz seleccionada
-        const selectedVoice = speechSynthesis.getVoices().find(voice => voice.name === selectedVoiceName);
-        if (selectedVoice) {
-          utterance.voice = selectedVoice;
-        }
-
-        speechSynthesis.speak(utterance);
+        readText(extractText(focusedRem.text));
       } else {
-        plugin.app.toast("No Rem is currently focused or it has no text!");
+        plugin.app.toast("No hay ningún Rem enfocado!");
       }
     },
   });

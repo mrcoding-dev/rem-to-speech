@@ -56,9 +56,18 @@ async function onActivate(plugin: ReactRNPlugin) {
         
         if (selection && 'type' in selection && selection.type === 'Rem') {
           // Es una selección de Rem
-          const selectedRem = await plugin.rem.findOne(selection.remIds[0]);
-          if (selectedRem?.text) {
-            readText(extractText(selectedRem.text));
+          const selectedRems = await Promise.all(
+            selection.remIds.map(id => plugin.rem.findOne(id))
+          );
+          
+          const textsToRead = selectedRems
+            .filter((rem): rem is NonNullable<typeof rem> => rem !== null && rem !== undefined)
+            .filter((rem): rem is typeof rem & { text: RichTextInterface } => rem.text !== undefined)
+            .map(rem => extractText(rem.text))
+            .join('. ');
+            
+          if (textsToRead) {
+            readText(textsToRead);
           }
         } else if (lastSelection.trim()) {
           readText(lastSelection);

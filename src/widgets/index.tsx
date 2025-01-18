@@ -1,22 +1,63 @@
-import { declareIndexPlugin, ReactRNPlugin, RichTextInterface, EditorEvents } from "@remnote/plugin-sdk";
+import { declareIndexPlugin, ReactRNPlugin, RichTextInterface, EditorEvents, WidgetLocation } from "@remnote/plugin-sdk";
+
+// Textos traducibles
+const i18n = {
+  es: {
+    noText: "No hay texto para leer!",
+    noSelection: "No hay texto seleccionado",
+    noFocusedRem: "No hay ningún Rem enfocado!",
+    readSelected: "Leer Texto Seleccionado",
+    readSelectedDesc: "Lee el texto seleccionado usando síntesis de voz",
+    readCurrent: "Leer Rem Actual",
+    readCurrentDesc: "Lee el texto del Rem actualmente enfocado"
+  },
+  en: {
+    noText: "No text to read!",
+    noSelection: "No text selected",
+    noFocusedRem: "No Rem focused!",
+    readSelected: "Read Selected Text",
+    readSelectedDesc: "Read selected text using speech synthesis",
+    readCurrent: "Read Current Rem",
+    readCurrentDesc: "Read the text of the currently focused Rem"
+  }
+};
 
 async function onActivate(plugin: ReactRNPlugin) {
-  // Función para leer texto
-  const readText = (text: string) => {
-    if (!text || !text.trim()) {
-      plugin.app.toast("No hay texto para leer!");
+  const lang = navigator.language.startsWith('es') ? 'es' : 'en';
+  const t = i18n[lang];
+
+  // Registrar el widget de detener
+  await plugin.app.registerWidget('stop-button', WidgetLocation.FloatingWidget, {
+    dimensions: { height: '50px', width: '200px' }
+  });
+
+  const readText = async (text: string) => {
+    if (!text?.trim()) {
+      plugin.app.toast(t.noText);
       return;
     }
 
+    window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
+    utterance.lang = lang === 'es' ? 'es-ES' : 'en-US';
     utterance.volume = 1;
     utterance.rate = 1;
     utterance.pitch = 1;
+
+    // Mostrar botón de detener
+    const widgetId = await plugin.window.openFloatingWidget('stop-button', {
+      bottom: 20,
+      right: 20
+    });
+
+    utterance.onend = () => {
+      plugin.window.closeFloatingWidget(widgetId);
+    };
+
     window.speechSynthesis.speak(utterance);
   };
 
-  // Función para extraer texto plano de RichText
   const extractText = (richText: RichTextInterface): string => {
     return richText.map(part => {
       if (typeof part === 'string') return part;
@@ -25,63 +66,36 @@ async function onActivate(plugin: ReactRNPlugin) {
     }).join(' ').trim();
   };
 
-  // Variable para almacenar la última selección
-  let lastSelection = '';
-
-  // Función para extraer texto de TextSelection
-  const extractSelectedText = (selection: any): string => {
-    return selection?.toString() || '';
-  };
-
-  // Escuchar cambios en la selección
-  plugin.event.addListener(EditorEvents.EditorSelectionChanged, undefined, async (data: any) => {
-    try {
-      if (data?.text) {
-        lastSelection = data.text;
-        console.log('Selected text:', lastSelection);
-      }
-    } catch (error) {
-      console.error('Error getting selected text:', error);
-    }
-  });
-
   // Comando para leer texto seleccionado
   plugin.app.registerCommand({
     id: 'read-selected-text',
-    name: 'Leer Texto Seleccionado',
-    description: 'Lee el texto seleccionado usando síntesis de voz',
+    name: t.readSelected,
+    description: t.readSelectedDesc,
     action: async () => {
-      try {
-        const selection = await plugin.editor.getSelection();
-        
-        if (selection && 'type' in selection && selection.type === 'Rem') {
-          // Es una selección de Rem
-          const selectedRems = await Promise.all(
-            selection.remIds.map(id => plugin.rem.findOne(id))
-          );
-          
-          const textsToRead = selectedRems
-            .filter((rem): rem is NonNullable<typeof rem> => rem !== null && rem !== undefined)
-            .filter((rem): rem is typeof rem & { text: RichTextInterface } => rem.text !== undefined)
-            .map(rem => extractText(rem.text))
-            .join('. ');
-            
-          if (textsToRead) {
-            readText(textsToRead);
-          }
-        } else if (lastSelection.trim()) {
-          readText(lastSelection);
+      const selection = await plugin.editor.getSelection();
+      if (selection && 'type' in selection && selection.type === 'Rem') {
+        const selectedRems = await Promise.all(
+          selection.remIds.map(id => plugin.rem.findOne(id))
+        );
+
+        const textsToRead = selectedRems
+          .filter((rem): rem is NonNullable<typeof rem> => rem !== null && rem !== undefined)
+          .filter((rem): rem is typeof rem & { text: RichTextInterface } => rem.text !== undefined)
+          .map(rem => extractText(rem.text))
+          .join('. ');
+
+        if (textsToRead) {
+          readText(textsToRead);
         } else {
-          // Si no hay texto seleccionado, intentamos leer el Rem enfocado
-          const focusedRem = await plugin.focus.getFocusedRem();
-          if (focusedRem?.text) {
-            readText(extractText(focusedRem.text));
-          } else {
-            plugin.app.toast("No hay texto seleccionado");
-          }
+          plugin.app.toast(t.noSelection);
         }
-      } catch (error) {
-        plugin.app.toast(`Error: ${error}`);
+      } else {
+        const focusedRem = await plugin.focus.getFocusedRem();
+        if (focusedRem?.text) {
+          readText(extractText(focusedRem.text));
+        } else {
+          plugin.app.toast(t.noSelection);
+        }
       }
     },
   });
@@ -89,14 +103,14 @@ async function onActivate(plugin: ReactRNPlugin) {
   // Comando para leer Rem actual
   plugin.app.registerCommand({
     id: 'read-current-rem',
-    name: 'Leer Rem Actual',
-    description: 'Lee el texto del Rem actualmente enfocado',
+    name: t.readCurrent,
+    description: t.readCurrentDesc,
     action: async () => {
       const focusedRem = await plugin.focus.getFocusedRem();
-      if (focusedRem && focusedRem.text) {
+      if (focusedRem?.text) {
         readText(extractText(focusedRem.text));
       } else {
-        plugin.app.toast("No hay ningún Rem enfocado!");
+        plugin.app.toast(t.noFocusedRem);
       }
     },
   });

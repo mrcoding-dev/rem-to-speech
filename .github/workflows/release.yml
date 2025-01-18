@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on version tags
+    branches:
+      - main
 
 jobs:
   build-and-release:
@@ -28,6 +28,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: PluginZip.zip
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
           draft: false
           prerelease: false
         env:

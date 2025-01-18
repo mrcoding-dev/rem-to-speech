@@ -39,7 +39,7 @@ const i18n = {
 };
 
 async function onActivate(plugin: ReactRNPlugin) {
-  const lang = navigator.language.startsWith('es') ? 'es' : 'en';
+  const lang = navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en';
   const t = i18n[lang];
 
   // Función para actualizar las opciones de voz

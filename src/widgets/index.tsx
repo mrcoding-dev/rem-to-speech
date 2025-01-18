@@ -125,8 +125,23 @@ async function onActivate(plugin: ReactRNPlugin) {
 
   const extractText = (richText: RichTextInterface): string => {
     return richText.map(part => {
+      // Si es texto plano
       if (typeof part === 'string') return part;
-      if ('_type' in part && part._type === 'rem') return '';
+      
+      // Si es un objeto con texto
+      if ('text' in part) return part.text;
+      
+      // Si es una referencia a un Rem
+      if ('_type' in part && part._type === 'rem') {
+        // Intentar obtener el texto del Rem referenciado
+        if ('text' in part) return part.text;
+      }
+
+      // Si es un elemento con formato (negrita, cursiva, etc.)
+      if ('children' in part && Array.isArray(part.children)) {
+        return extractText(part.children);
+      }
+
       return '';
     }).join(' ').trim();
   };

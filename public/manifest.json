@@ -4,11 +4,18 @@
   "name": "Text to Speech",
   "author": "Gabriel",
   "repoUrl": "https://github.com/yourusername/remnote-tts-plugin",
-  "version": "1.0.0",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
   "description": "A plugin that reads your notes aloud using text-to-speech synthesis",
   "enableOnMobile": true,
   "requestNative": false,
   "requiredScopes": [
-    "all"
+    {
+      "type": "All",
+      "level": "ReadCreateModifyDelete"
+    }
   ]
 }

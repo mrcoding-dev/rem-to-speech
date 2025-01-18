@@ -26,8 +26,8 @@ jobs:
         
       - name: Update manifest version
         run: |
-          VERSION="1.0.${{ github.run_number }}"
-          jq '.version = $newVal' --arg newVal "$VERSION" public/manifest.json > tmp.json && mv tmp.json public/manifest.json
+          VERSION_PATCH="${{ github.run_number }}"
+          jq '.version.patch = ($newVal | tonumber)' --arg newVal "$VERSION_PATCH" public/manifest.json > tmp.json && mv tmp.json public/manifest.json
         
       - name: Build plugin
         run: npm run build

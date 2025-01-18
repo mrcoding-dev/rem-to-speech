@@ -9,7 +9,15 @@ const i18n = {
     readSelected: "Leer Texto Seleccionado",
     readSelectedDesc: "Lee el texto seleccionado usando síntesis de voz",
     readCurrent: "Leer Rem Actual",
-    readCurrentDesc: "Lee el texto del Rem actualmente enfocado"
+    readCurrentDesc: "Lee el texto del Rem actualmente enfocado",
+    voiceSettings: "Configuración de Voz",
+    voiceSettingsDesc: "Configura la velocidad y el volumen de la voz",
+    voiceSpeed: "Velocidad de la Voz",
+    voiceVolume: "Volumen de la Voz",
+    voiceSpeedDesc: "Ajusta la velocidad de lectura (0.5 a 2)",
+    voiceVolumeDesc: "Ajusta el volumen de la voz (0 a 1)",
+    voiceSelection: "Selección de Voz",
+    voiceSelectionDesc: "Selecciona la voz a usar para Text to Speech"
   },
   en: {
     noText: "No text to read!",
@@ -18,7 +26,15 @@ const i18n = {
     readSelected: "Read Selected Text",
     readSelectedDesc: "Read selected text using speech synthesis",
     readCurrent: "Read Current Rem",
-    readCurrentDesc: "Read the text of the currently focused Rem"
+    readCurrentDesc: "Read the text of the currently focused Rem",
+    voiceSettings: "Voice Settings",
+    voiceSettingsDesc: "Configure voice speed and volume",
+    voiceSpeed: "Voice Speed",
+    voiceVolume: "Voice Volume",
+    voiceSpeedDesc: "Adjust reading speed (0.5 to 2)",
+    voiceVolumeDesc: "Adjust voice volume (0 to 1)",
+    voiceSelection: "Voice Selection",
+    voiceSelectionDesc: "Select the voice to use for Text to Speech"
   }
 };
 
@@ -26,9 +42,42 @@ async function onActivate(plugin: ReactRNPlugin) {
   const lang = navigator.language.startsWith('es') ? 'es' : 'en';
   const t = i18n[lang];
 
+  // Función para actualizar las opciones de voz
+  function updateVoiceOptions() {
+    plugin.settings.registerDropdownSetting({
+      id: "voice-selection",
+      title: t.voiceSelection || "Voice Selection",
+      description: t.voiceSelectionDesc || "Select the voice to use for Text to Speech",
+      options: speechSynthesis.getVoices().map(voice => ({
+        key: voice.name,
+        label: `${voice.name} (${voice.lang})`,
+        value: voice.name,
+      })),
+    });
+  }
+
+  // Inicializar opciones de voz
+  updateVoiceOptions();
+  speechSynthesis.onvoiceschanged = updateVoiceOptions;
+
   // Registrar el widget de detener
   await plugin.app.registerWidget('stop-button', WidgetLocation.FloatingWidget, {
-    dimensions: { height: '50px', width: '200px' }
+    dimensions: { height: 50, width: 200 }
+  });
+
+  // Registrar configuraciones
+  await plugin.settings.registerStringSetting({
+    id: 'voice-speed',
+    title: t.voiceSpeed,
+    description: t.voiceSpeedDesc,
+    defaultValue: '1',
+  });
+
+  await plugin.settings.registerStringSetting({
+    id: 'voice-volume',
+    title: t.voiceVolume,
+    description: t.voiceVolumeDesc,
+    defaultValue: '1',
   });
 
   const readText = async (text: string) => {
@@ -40,10 +89,26 @@ async function onActivate(plugin: ReactRNPlugin) {
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang === 'es' ? 'es-ES' : 'en-US';
-    utterance.volume = 1;
-    utterance.rate = 1;
+    
+    // Aplicar la voz seleccionada
+    const selectedVoiceName = await plugin.settings.getSetting("voice-selection");
+    if (selectedVoiceName) {
+      const selectedVoice = speechSynthesis.getVoices().find(voice => voice.name === selectedVoiceName);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+    } else {
+      utterance.lang = lang === 'es' ? 'es-ES' : 'en-US';
+    }
+
     utterance.pitch = 1;
+
+    // Usar las configuraciones
+    const speed = parseFloat(await plugin.settings.getSetting('voice-speed')) || 1;
+    const volume = parseFloat(await plugin.settings.getSetting('voice-volume')) || 1;
+    
+    utterance.rate = Math.max(0.5, Math.min(2, speed));  // limitar entre 0.5 y 2
+    utterance.volume = Math.max(0, Math.min(1, volume)); // limitar entre 0 y 1
 
     // Mostrar botón de detener
     const widgetId = await plugin.window.openFloatingWidget('stop-button', {

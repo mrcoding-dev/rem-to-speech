@@ -5,13 +5,8 @@ const i18n = {
   es: {
     noText: "No hay texto para leer!",
     noSelection: "No hay texto seleccionado",
-    noFocusedRem: "No hay ningún Rem enfocado!",
     readSelected: "Leer Texto Seleccionado",
     readSelectedDesc: "Lee el texto seleccionado usando síntesis de voz",
-    readCurrent: "Leer Rem Actual",
-    readCurrentDesc: "Lee el texto del Rem actualmente enfocado",
-    voiceSettings: "Configuración de Voz",
-    voiceSettingsDesc: "Configura la velocidad y el volumen de la voz",
     voiceSpeed: "Velocidad de la Voz",
     voiceVolume: "Volumen de la Voz",
     voiceSpeedDesc: "Ajusta la velocidad de lectura (0.5 a 2)",
@@ -22,13 +17,8 @@ const i18n = {
   en: {
     noText: "No text to read!",
     noSelection: "No text selected",
-    noFocusedRem: "No Rem focused!",
     readSelected: "Read Selected Text",
     readSelectedDesc: "Read selected text using speech synthesis",
-    readCurrent: "Read Current Rem",
-    readCurrentDesc: "Read the text of the currently focused Rem",
-    voiceSettings: "Voice Settings",
-    voiceSettingsDesc: "Configure voice speed and volume",
     voiceSpeed: "Voice Speed",
     voiceVolume: "Voice Volume",
     voiceSpeedDesc: "Adjust reading speed (0.5 to 2)",
@@ -42,17 +32,57 @@ async function onActivate(plugin: ReactRNPlugin) {
   const lang = navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en';
   const t = i18n[lang];
 
+  // Función para obtener la calidad de una voz basada en su nombre
+  function getVoiceQuality(voice: SpeechSynthesisVoice): number {
+    const name = voice.name.toLowerCase();
+    // Voces de alta calidad
+    if (name.includes('premium') || name.includes('neural') || name.includes('enhanced')) return 3;
+    // Voces de Microsoft Edge/Google
+    if (name.includes('microsoft') || name.includes('google')) return 2;
+    // Voces naturales
+    if (voice.localService) return 1;
+    return 0;
+  }
+
   // Función para actualizar las opciones de voz
   function updateVoiceOptions() {
+    const voices = speechSynthesis.getVoices();
+
+    // Organizar voces por idioma y calidad
+    const sortedVoices = voices.sort((a, b) => {
+      // Primero por calidad
+      const qualityDiff = getVoiceQuality(b) - getVoiceQuality(a);
+      if (qualityDiff !== 0) return qualityDiff;
+
+      // Luego por idioma (priorizar idioma del usuario)
+      const userLang = navigator.language.toLowerCase();
+      const aMatchesLang = a.lang.toLowerCase().startsWith(userLang.split('-')[0]) ? 1 : 0;
+      const bMatchesLang = b.lang.toLowerCase().startsWith(userLang.split('-')[0]) ? 1 : 0;
+      if (bMatchesLang !== aMatchesLang) return bMatchesLang - aMatchesLang;
+
+      // Finalmente alfabéticamente
+      return a.name.localeCompare(b.name);
+    });
+
+    // Crear etiquetas mejoradas
+    const voiceOptions = sortedVoices.map(voice => {
+      const quality = getVoiceQuality(voice);
+      let qualityBadge = '';
+      if (quality === 3) qualityBadge = '⭐ ';
+      else if (quality === 2) qualityBadge = '✓ ';
+
+      return {
+        key: voice.name,
+        label: `${qualityBadge}${voice.name} (${voice.lang})`,
+        value: voice.name,
+      };
+    });
+
     plugin.settings.registerDropdownSetting({
       id: "voice-selection",
       title: t.voiceSelection || "Voice Selection",
       description: t.voiceSelectionDesc || "Select the voice to use for Text to Speech",
-      options: speechSynthesis.getVoices().map(voice => ({
-        key: voice.name,
-        label: `${voice.name} (${voice.lang})`,
-        value: voice.name,
-      })),
+      options: voiceOptions,
     });
   }
 
@@ -62,7 +92,17 @@ async function onActivate(plugin: ReactRNPlugin) {
 
   // Registrar el widget de detener
   await plugin.app.registerWidget('stop-button', WidgetLocation.FloatingWidget, {
-    dimensions: { height: 50, width: 200 }
+    dimensions: { height: 70, width: 200 }
+  });
+
+  // Registrar el widget del menú de texto seleccionado
+  await plugin.app.registerWidget('selected-text-menu', WidgetLocation.SelectedTextMenu, {
+    dimensions: {
+      height: 'auto',
+      width: '100%'
+    },
+    widgetTabIcon: 'https://cdn-icons-png.flaticon.com/512/3024/3024593.png',
+    widgetTabTitle: lang === 'es' ? 'Leer' : 'Read'
   });
 
   // Registrar configuraciones
@@ -80,16 +120,34 @@ async function onActivate(plugin: ReactRNPlugin) {
     defaultValue: '1',
   });
 
+  // Variable para almacenar el ID del widget actual
+  let currentWidgetId: string | null = null;
+
+  // Sistema de estado global simple
+  const speechState = {
+    isPlaying: false,
+  };
+
+  // Hacer el estado accesible globalmente
+  (window as any).speechState = speechState;
+
+  // Función para detener
+  (window as any).stopSpeech = () => {
+    speechState.isPlaying = false;
+    window.speechSynthesis.cancel();
+  };
+
   const readText = async (text: string) => {
     if (!text?.trim()) {
       plugin.app.toast(t.noText);
       return;
     }
 
+    // Detener cualquier reproducción previa
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    
+
     // Aplicar la voz seleccionada
     const selectedVoiceName = await plugin.settings.getSetting("voice-selection");
     if (selectedVoiceName) {
@@ -106,44 +164,78 @@ async function onActivate(plugin: ReactRNPlugin) {
     // Usar las configuraciones
     const speed = parseFloat(await plugin.settings.getSetting('voice-speed')) || 1;
     const volume = parseFloat(await plugin.settings.getSetting('voice-volume')) || 1;
-    
-    utterance.rate = Math.max(0.5, Math.min(2, speed));  // limitar entre 0.5 y 2
-    utterance.volume = Math.max(0, Math.min(1, volume)); // limitar entre 0 y 1
 
-    // Mostrar botón de detener
-    const widgetId = await plugin.window.openFloatingWidget('stop-button', {
+    utterance.rate = Math.max(0.5, Math.min(2, speed));
+    utterance.volume = Math.max(0, Math.min(1, volume));
+
+    // Cerrar widget anterior si existe
+    if (currentWidgetId) {
+      try {
+        await plugin.window.closeFloatingWidget(currentWidgetId);
+      } catch (e) {
+        // Widget ya cerrado
+      }
+    }
+
+    // Actualizar estado
+    speechState.isPlaying = true;
+
+    // Mostrar botón de control
+    currentWidgetId = await plugin.window.openFloatingWidget('stop-button', {
       bottom: 20,
       right: 20
     });
 
     utterance.onend = () => {
-      plugin.window.closeFloatingWidget(widgetId);
+      speechState.isPlaying = false;
+      if (currentWidgetId) {
+        plugin.window.closeFloatingWidget(currentWidgetId);
+        currentWidgetId = null;
+      }
+    };
+
+    utterance.onerror = () => {
+      speechState.isPlaying = false;
+      if (currentWidgetId) {
+        plugin.window.closeFloatingWidget(currentWidgetId);
+        currentWidgetId = null;
+      }
     };
 
     window.speechSynthesis.speak(utterance);
   };
 
   const extractText = (richText: RichTextInterface): string => {
-    return richText.map(part => {
-      // Si es texto plano
-      if (typeof part === 'string') return part;
-      
-      // Si es un objeto con texto
-      if ('text' in part) return part.text;
-      
-      // Si es una referencia a un Rem
-      if ('_type' in part && part._type === 'rem') {
-        // Intentar obtener el texto del Rem referenciado
-        if ('text' in part) return part.text;
-      }
+    if (!richText) return '';
+    if (typeof richText === 'string') return richText;
 
-      // Si es un elemento con formato (negrita, cursiva, etc.)
-      if ('children' in part && Array.isArray(part.children)) {
-        return extractText(part.children);
-      }
+    if (Array.isArray(richText)) {
+      return richText.map(part => {
+        // Si es texto plano
+        if (typeof part === 'string') return part;
 
-      return '';
-    }).join(' ').trim();
+        if (part && typeof part === 'object') {
+          const partObj = part as any;
+
+          // Si es un objeto con texto directo
+          if ('text' in partObj) return partObj.text;
+
+          // Si es una referencia a un Rem
+          if ('_type' in partObj && partObj._type === 'rem') {
+            if ('text' in partObj) return partObj.text;
+          }
+
+          // Si es un elemento con formato (negrita, cursiva, etc.)
+          if ('children' in partObj && Array.isArray(partObj.children)) {
+            return extractText(partObj.children);
+          }
+        }
+
+        return '';
+      }).join('').trim();
+    }
+
+    return '';
   };
 
   // Comando para leer texto seleccionado
@@ -180,20 +272,6 @@ async function onActivate(plugin: ReactRNPlugin) {
     },
   });
 
-  // Comando para leer Rem actual
-  plugin.app.registerCommand({
-    id: 'read-current-rem',
-    name: t.readCurrent,
-    description: t.readCurrentDesc,
-    action: async () => {
-      const focusedRem = await plugin.focus.getFocusedRem();
-      if (focusedRem?.text) {
-        readText(extractText(focusedRem.text));
-      } else {
-        plugin.app.toast(t.noFocusedRem);
-      }
-    },
-  });
 }
 
 async function onDeactivate(_: ReactRNPlugin) {}

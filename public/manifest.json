@@ -6,7 +6,7 @@
   "repoUrl": "https://github.com/remnoteio/remnote-official-plugins",
   "version": {
     "major": 1,
-    "minor": 0,
+    "minor": 1,
     "patch": 0
   },
   "description": "A plugin that reads your notes aloud using text-to-speech synthesis",

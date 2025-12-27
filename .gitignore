@@ -163,3 +163,7 @@ dist
 
 # Custom rules
 .windsurfrules
+
+# Claude AI files
+claude.md
+.claude*
